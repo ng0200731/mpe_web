@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>J-Long Scroll Experience</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; color: #fff; font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
+
+    /* ─── Loader ─────────────────────────────────── */
+    #loader { position: fixed; inset: 0; z-index: 1000; background: #000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #loader.done { opacity: 0; pointer-events: none; transition: opacity 0.6s; }
+    #loader p { color: #666; font-size: 14px; margin-top: 12px; }
+    #load-bar { width: 200px; height: 3px; background: #222; margin-top: 16px; border-radius: 2px; overflow: hidden; }
+    #load-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #00e5ff, #ff0055); transition: width 0.2s; }
+
+    /* ─── Stage ──────────────────────────────────── */
+    #stage { position: fixed; inset: 0; z-index: 0; display: flex; background: #000; }
+
+    /* ─── Canvas panel ───────────────────────────── */
+    #canvas-panel {
+      position: relative; overflow: hidden;
+      transition: order 0.6s ease, width 0.6s ease;
+    }
+    #canvas-panel.pos-right { width: 60%; order: 2; }
+    #canvas-panel.pos-left { width: 55%; order: 1; }
+
+    #frame-canvas {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 100%; max-height: 100vh;
+    }
+
+    /* ─── Caption panel ──────────────────────────── */
+    #cap-panel {
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 60px 50px; flex: 1; min-width: 0;
+      transition: order 0.6s ease;
+    }
+    #cap-panel.side-right { order: 1; }
+    #cap-panel.side-left { order: 2; }
+
+    #cap-panel .tag {
+      font-size: 11px; font-weight: 600; letter-spacing: 3px;
+      color: #00e5ff; text-transform: uppercase; margin-bottom: 20px;
+      opacity: 0; transform: translateY(20px);
+      transition: all 0.6s ease-out;
+    }
+    #cap-panel .title {
+      font-size: 38px; font-weight: 700; letter-spacing: 1px; line-height: 1.15;
+      opacity: 0; transform: translateY(25px);
+      transition: all 0.6s ease-out 0.1s;
+    }
+    #cap-panel .desc {
+      font-size: 15px; color: #888; font-weight: 300; margin-top: 16px; line-height: 1.6;
+      opacity: 0; transform: translateY(25px);
+      transition: all 0.6s ease-out 0.2s;
+    }
+    #cap-panel .divider {
+      width: 50px; height: 2px;
+      background: linear-gradient(90deg, #00e5ff, #ff0055);
+      margin: 24px 0; opacity: 0; transform: scaleX(0); transform-origin: left;
+      transition: all 0.6s ease-out 0.25s;
+    }
+    #cap-panel.visible .tag, #cap-panel.visible .title, #cap-panel.visible .desc {
+      opacity: 1; transform: translateY(0);
+    }
+    #cap-panel.visible .divider { opacity: 1; transform: scaleX(1); }
+
+    /* ─── Progress ───────────────────────────────── */
+    #pbar { position: fixed; top: 0; left: 0; height: 3px;
+      background: linear-gradient(90deg,#00e5ff,#ff0055); z-index: 20; width: 0%; }
+
+    /* ─── Video indicator ────────────────────────── */
+    #vidx { position: fixed; top: 16px; right: 20px; z-index: 20; display: flex; gap: 8px; }
+    #vidx span { width: 24px; height: 3px; background: #333; border-radius: 2px; transition: background 0.3s; }
+    #vidx span.on { background: #00e5ff; }
+
+    /* ─── Spacer ─────────────────────────────────── */
+    .spacer { height: 600vh; position: relative; z-index: 1; }
+
+    /* ─── Hint ───────────────────────────────────── */
+    #hint {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      z-index: 20; display: flex; flex-direction: column;
+      align-items: center; gap: 6px; color: #555; font-size: 13px; letter-spacing: 1px;
+      opacity: 1; transition: opacity 0.6s;
+    }
+    #hint.gone { opacity: 0; pointer-events: none; }
+    #hint .arrow {
+      width: 12px; height: 12px;
+      border-right: 2px solid #00e5ff; border-bottom: 2px solid #00e5ff;
+      transform: rotate(45deg); animation: bob 1.8s ease-in-out infinite; opacity: 0.6;
+    }
+    @keyframes bob {
+      0%, 100% { transform: rotate(45deg) translateY(0); opacity: 0.6; }
+      50% { transform: rotate(45deg) translateY(6px); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loader">
+  <p>Loading frames…</p>
+  <div id="load-bar"><div id="load-fill"></div></div>
+  <p id="ltx" style="color:#555;font-size:12px;margin-top:8px"></p>
+</div>
+
+<div id="stage">
+  <div id="canvas-panel" class="pos-right">
+    <canvas id="frame-canvas"></canvas>
+  </div>
+  <div id="cap-panel" class="side-right">
+    <div class="tag" id="capTag"></div>
+    <div class="divider"></div>
+    <div class="title" id="capTitle"></div>
+    <div class="desc" id="capDesc"></div>
+  </div>
+</div>
+
+<div class="spacer"></div>
+<div id="pbar"></div>
+<div id="vidx"><span></span><span></span><span></span><span></span><span></span></div>
+<div id="hint"><div class="arrow"></div>Scroll</div>
+
+<script>
+// ─── Config ──────────────────────────────────────
+const sections = [
+  {
+    tag: 'J-LONG MANUFACTURING',
+    title: 'Precision Woven Labels',
+    desc: 'Thread-by-thread craftsmanship meets industrial scale — where tradition and technology converge.',
+    frameDir: 'v1', frameCount: 118,
+    videoPos: 'pos-right', capPos: 'side-right',
+  },
+  {
+    tag: 'STILL HANDLE DAILY EMAIL MANUALLY?',
+    title: 'CRM Email-Driven Workbench',
+    desc: 'From customer inquiry to resolution — every email tracked, assigned, and resolved in one unified system.',
+    frameDir: 'v4', frameCount: 122,
+    videoPos: 'pos-left', capPos: 'side-left',
+  },
+  {
+    tag: 'STILL FINDING MATERIAL MANUALLY?',
+    title: 'Image Material Texture Library',
+    desc: 'Stop searching through folders — instant visual search across your entire archive with perceptual hashing and color matching.',
+    frameDir: 'v2', frameCount: 122,
+    videoPos: 'pos-right', capPos: 'side-right',
+  },
+  {
+    tag: 'STILL MANUALLY MAKE PRODUCTION LAYOUT?',
+    title: 'Automated Prepress Workflow',
+    desc: 'From design to plate — eliminate manual layout steps with intelligent template-driven production automation.',
+    frameDir: 'v5', frameCount: 59,
+    videoPos: 'pos-left', capPos: 'side-left',
+  },
+  {
+    tag: 'STILL CHECK QUALITY MANUALLY?',
+    title: 'Algorithmic Quality Control',
+    desc: 'SSIM-based inspection replaces human eyes — every label verified against the reference with zero defects and full traceability.',
+    frameDir: 'v3', frameCount: 122,
+    videoPos: 'pos-right', capPos: 'side-right',
+  },
+];
+
+const N = sections.length;
+const CROSSFADE_PCT = 0.06;
+const SECTION_PCT = (1 - CROSSFADE_PCT * (N - 1)) / N;
+const FRAME_W = 960;
+const FRAME_H = 540;
+
+// ─── DOM refs ────────────────────────────────────
+const canvas = document.getElementById('frame-canvas');
+const ctx = canvas.getContext('2d');
+const canvasPanel = document.getElementById('canvas-panel');
+const capPanel = document.getElementById('cap-panel');
+const vidxEls = document.querySelectorAll('#vidx span');
+const loadFill = document.getElementById('load-fill');
+const ltx = document.getElementById('ltx');
+
+canvas.width = FRAME_W;
+canvas.height = FRAME_H;
+
+// ─── Preload all frames ──────────────────────────
+const frameImages = []; // frameImages[sectionIdx][frameIdx]
+const totalFrames = sections.reduce((s, sec) => s + sec.frameCount, 0);
+let loadedCount = 0;
+
+sections.forEach((sec, si) => {
+  const arr = [];
+  for (let fi = 0; fi < sec.frameCount; fi++) {
+    const num = String(fi + 1).padStart(4, '0');
+    const img = new Image();
+    img.src = `${sec.frameDir}/f-${num}.jpg`;
+    img.onload = img.onerror = () => {
+      loadedCount++;
+      const pct = Math.round((loadedCount / totalFrames) * 100);
+      loadFill.style.width = pct + '%';
+      ltx.textContent = `${loadedCount} / ${totalFrames} frames (${pct}%)`;
+      if (loadedCount >= totalFrames) {
+        document.getElementById('loader').classList.add('done');
+        requestAnimationFrame(tick);
+      }
+    };
+    arr.push(img);
+  }
+  frameImages.push(arr);
+});
+
+// ─── Smooth scroll interpolation ─────────────────
+let smoothPct = 0;
+const LERP_SPEED = 0.12;
+
+function lerp(from, to, t) {
+  return from + (to - from) * t;
+}
+
+function easeInOut(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// ─── Caption ─────────────────────────────────────
+let lastVi = -1;
+function showCaption(vi) {
+  if (lastVi === vi) return;
+  const s = sections[vi];
+  document.getElementById('capTag').textContent = s.tag;
+  document.getElementById('capTitle').textContent = s.title;
+  document.getElementById('capDesc').textContent = s.desc;
+
+  canvasPanel.className = s.videoPos;
+  capPanel.className = s.capPos;
+  capPanel.classList.remove('visible');
+  void capPanel.offsetWidth;
+  capPanel.classList.add('visible');
+  lastVi = vi;
+}
+
+// ─── Draw frame on canvas ────────────────────────
+function drawFrame(sectionIdx, frameIdx, alpha) {
+  const imgs = frameImages[sectionIdx];
+  const fi = Math.max(0, Math.min(imgs.length - 1, Math.round(frameIdx)));
+  const img = imgs[fi];
+  if (!img || !img.complete || img.naturalWidth === 0) return;
+
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.drawImage(img, 0, 0, FRAME_W, FRAME_H);
+}
+
+// ─── Main loop ───────────────────────────────────
+function tick() {
+  const scrollH = document.documentElement.scrollHeight - window.innerHeight;
+  const rawPct = Math.max(0, Math.min(1, window.scrollY / scrollH));
+
+  // Smooth interpolation
+  smoothPct = lerp(smoothPct, rawPct, LERP_SPEED);
+  if (Math.abs(smoothPct - rawPct) < 0.0001) smoothPct = rawPct;
+  const pct = smoothPct;
+
+  // ── Determine active sections ──
+  let cursor = 0;
+  let dominantVi = 0;
+  let dominantOpacity = 0;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, FRAME_W, FRAME_H);
+  ctx.globalAlpha = 1;
+
+  for (let i = 0; i < N; i++) {
+    const secStart = cursor;
+    const secEnd = cursor + SECTION_PCT;
+
+    if (pct >= secStart - CROSSFADE_PCT * 2 && pct <= secEnd + CROSSFADE_PCT * 2) {
+      // Local progress within this section
+      const localP = Math.max(0, Math.min(1, (pct - secStart) / SECTION_PCT));
+      const frameIdx = localP * (sections[i].frameCount - 1);
+
+      // Opacity: fade in / fade out at boundaries
+      let opacity = 1;
+      if (pct >= secEnd && i < N - 1) {
+        opacity = 1 - easeInOut((pct - secEnd) / CROSSFADE_PCT);
+      }
+      if (i > 0 && pct < secStart) {
+        opacity = easeInOut((pct - (secStart - CROSSFADE_PCT)) / CROSSFADE_PCT);
+      }
+      opacity = Math.max(0, Math.min(1, opacity));
+
+      if (opacity > 0.01) {
+        drawFrame(i, frameIdx, opacity);
+      }
+
+      if (opacity > dominantOpacity) {
+        dominantOpacity = opacity;
+        dominantVi = i;
+      }
+    }
+
+    cursor = secEnd + CROSSFADE_PCT;
+  }
+
+  // Update caption & indicators
+  showCaption(dominantVi);
+  vidxEls.forEach((el, i) => el.classList.toggle('on', i === dominantVi));
+
+  // Progress bar
+  document.getElementById('pbar').style.width = (pct * 100) + '%';
+
+  // Hint
+  const hintEl = document.getElementById('hint');
+  if (pct > 0.95) hintEl.classList.add('gone');
+  else if (pct > 0.01) hintEl.classList.remove('gone');
+
+  requestAnimationFrame(tick);
+}
+
+window.addEventListener('scroll', () => {}, { passive: true });
+</script>
+</body>
+</html>

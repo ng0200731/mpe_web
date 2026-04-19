@@ -1,3 +1,3 @@
-export const MyComposition = () => {
-  return null;
-};
+import { WeavingAnimation } from "./WeavingAnimation";
+
+export const MyComposition = WeavingAnimation;

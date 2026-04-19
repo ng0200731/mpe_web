@@ -1,0 +1,6 @@
+{
+  "buildCommand": "remotion bundle",
+  "outputDirectory": "build",
+  "framework": null,
+  "installCommand": "npm install"
+}

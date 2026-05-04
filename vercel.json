@@ -1,6 +1,6 @@
 {
-  "buildCommand": "remotion bundle",
-  "outputDirectory": "build",
+  "buildCommand": "node build-site.js",
+  "outputDirectory": "dist",
   "framework": null,
   "installCommand": "npm install"
 }
